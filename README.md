@@ -256,6 +256,259 @@ This effectively goes back to a previous state and starts over from there. There
 
 Note that, in all cases, your local instance of the repository will keep track of the hash history (as shown by `git reflog`).
 
+## Branching, merging and sending pull requests
+
+Branches are, basically, deviations from the mainline code (aka. the _master branch_) that can be used for developing new features or test patches. They are based on a particular commit of the master branch and can be incorporated back into the main code at a later stage (i.e. even after several new commits in the master) through so-called _mergers_.
+
+If several people collaborate on a coding project, it can be very useful to have each programmer work on their own branch (and in an own local instance of the code). When a collaborator finishes the implementation of some feature, they can merge their code into the (perhaps evolved) master branch, or --- even better --- submit a so-called _pull request_ to the maintainer of the main repository, who can then review the submitted code and merge it into the master branch.
+
+### Branching
+
+The easiest way to create a new branch is to checkout some commit into a new branch:
+```
+git checkout -b <new_branch_name> [<starting_point>]
+```
+where `<starting_point>` is the name of a commit you wish to base your branch on (defaults to `HEAD` if not specified). To check which branch you are on (and what branches are available in your local repository instance), use `git branch`. You can easily switch between branches using
+```
+git checkout <branch_name>
+```
+(but avoid switching while having uncommitted work).
+
+In addition, you can also set different remotes for each branch (e.g., in case you wish to follow the master branch of an outside repository in order to merge their updates into your fork). You can either do this by specifying (forget the last two lines if the remote is already configured)
+```
+git config branch.<branch_name>.remote <remote_name>
+git config branch.<branch_name>.merge refs/heads/<remote_branch_name>
+git config remote.<remote_name>.url git@github.com:<path_to_repo>
+git config remote.<remote_name>.fetch +refs/heads/*:refs/remotes/<remote_name>/*
+```
+or, much easier and less error prone, by executing when starting out
+```
+git remote add <remote_name> git@github.com:<path_to_repo>
+git fetch --all
+git checkout -b <new_branch_name> <remote_name>/<remote_branch_name>
+```
+This will create the branch `<new_branch_name>` tracking the branch `<remote_branch_name>` in the `git@github.com:<path_to_repo>` repository.
+
+### Merging
+
+So assume that you are ready to incorporate the (already committed!) changes you made in the branch `<branch_name>` into the `master` branch. Then one way of doing this would be as follows.
+1. Check out the master branch: `git checkout master`
+2. Merge the new commits into `master`: `git merge <branch_name>`
+3. In case `git` can figure out a way to incorporate your code into `master`, you are done. Otherwise, `git` will complain about one or several _merge conflict_s. In this case, you will need to manually select the code you want to keep (if not re-code some parts) in each file where a conflict occurred. Such files are categorised as "both added" or "both modified" in the output of `git status`, and they contain so-called _conflict markers_. Such a file will look --- possibly in _several_ places --- as follows:
+    ```
+    [...]
+    [...merged code...]
+    [...]
+    <<<<<<< HEAD
+    [...]
+    [...conflicting code in the master branch...]
+    [...]
+    =======
+    [...]
+    [...conflicting code in the branch <branch_name>...]
+    [...]
+    >>>>>>> <branch_name>
+    [...]
+    [...merged_code...]
+    [...]
+    ```
+    `git` tells you to resolve the conflict and then `git add` the file (all files that were automatically merged are already staged at this point).
+    **Remark:** It is not always wise to just select either the part between `<<<<<<< HEAD` and `=======` or the part between `=======` and `>>>>>>> <branch_name>` (deleting the other part as well as the three conflict markers), since `git` cannot know if the code would still run. If things get complicated, the following three commands can prove extremely helpful:
+    * `git show :1:<filename>` to see the common parent of the file `<filename>`
+    * `git show :2:<filename>` to see the content of `<filename>` according to branch `master` (i.e. like it was before you called `git merge <branch_name>`)
+    * `git show :3:<filename>` to see `<filename>` according to the branch `<branch_name>` (i.e. like it would have looked had you just typed `git checkout <branch_name>`)
+
+    Once you are done solving all the conflicts and `git add`ing all the problematic files, issue a `git commit` in order to finish the merge (`git` will suggest the commit message `Merge branch '<branch_name>' into master`).
+
+    Note: `git` keeps track that you are currently solving a merge conflict by placing the file `MERGE_HEAD` into the `.git` subdirectory. Therefore, look out for this file if you start working in a repository for which you are unsure about the status (and perhaps solve any merge conflict before you start coding new features).
+4. (<i>@optional</i>) `git push` the merged code to your repository
+
+**Remark:** An alternative way of merging a branch into `master` is to `git rebase` the code. This essentially places the commits in the branch `<branch_name>` _on top_ of the commits in the `master` branch. It is a feature-rich tool which has an interactive mode allowing one to solve conflicts commit by commit (which can be very useful if `<branch_name>` and `master` have diverged excessively). See `man git-rebase` for more details.
+
+
+### Sending pull requests
+
+The idea behind this is that you can patch or extend the code in some public repository and ask the maintainers to review your changes or additions and merge your code into theirs for others to take advantage of your work. Normally, you will not have push rights to the repository in question, so there is no other way, actually, than to submit a pull request. It may, however, also improve the collaborative code development workflow within a group, since changes will be made only in the own instances of each developer, and the maintainers (which could even be everybody else except the coder of the particular request) will be responsible for reviewing and merging the new code into the main repo, thus improving quality control.
+
+A pull request presumes that the code you wish to submit is already deposited at some location the maintainer has access to (typically identified by a URL, such as a repository inside your own GitHub page), although a file path may work equally well. Of course, if you are using [GitHub](https://github.com), you can submit a pull request online. If you prefer the command line, though, you can generate one as follows:
+```
+git request-pull [-p] <upstream-base-for-your-changes> <url-where-to-find-your-pushed-code> [<last-commit-to-be-pulled>]
+```
+Here, specifying `-p` will also generate a `diff` in the pull request, and `<last-commit-to-be-pulled>` defaults to `HEAD`. It is probably useful to specify the latter in the following context. Assume that you pushed a local development branch directly onto the master branch of your remote. Then you can specify the master branch in the pull request while basing it on your local development branch using the syntax: `<local-devel-branch>:<remote-master-branch>`.
+
+The output `git request-pull` generates can then be sent to the maintainers, along with a short description of what the series of commits you submit is doing (and, perhaps, why they should integrate it).
+
+## Updating the Islandora core modules on the server
+
+This should actually be easy, as long as one does not modify the code of the core modules (see "Updating untouched modules") --- modulo, of course, the then necessary adaptations in our own modules (especially [lib4ridora](https://github.com/Lib4RI/lib4ridora)). However, if modifications were made, the best approach seems to be to maintain a fork. We explain below how to set up such a fork and how to update modules once the fork is in place.
+
+NOTE: It is _highly_ recommended, besides making a backup before you begin, to perform all updates on [`dev`](sftp://<dora-dev-server>) first and test extensively before updating [`prod`](sftp://<dora-prod-server>). Also, it might be a good idea to start with updating the system (including userland tools) and then all the Drupal modules. Finally, be aware that all the Islandora core modules should be updated synchronously.
+
+**Remark:** It is probably a good idea to get acquainted with the rest of this little tutorial before attempting to follow the instructions in this section...
+
+### Pre-update tasks
+
+Before you update the modules, themes and libraries, it is a good idea to perform the following steps:
+1. Backup the server (shut it down and take a snapshot)
+2. Update the system and userland (e.g. [`php`](https://php.net))
+3. Update the Drupal modules (@TODO: Make a step-by-step guide for this)
+4. Shut down the `httpd` and `fedora` services:
+    ```
+    /usr/bin/sudo /sbin/service httpd stop
+    /usr/bin/sudo /sbin/service fedora stop
+    ```
+
+Now update each module (`/var/www/html/sites/all/modules`), theme (`/var/www/html/sites/all/themes`) and library (`/var/www/html/sites/all/libraries`) according to the instructions below (in case they are `git` repositories and are not updated by Drupal)
+
+### Updating untouched modules
+
+A simple `git pull` inside the module's root directory on your server (`/var/www/html/sites/all/modules/<module_name>`) should do the trick. However, if `git status` shows that you are not on any branch, or there are other issues and weirdnesses, consider updating in the following way:
+```
+cd /var/www/html/sites/all/modules
+yes | /usr/bin/sudo /bin/rm -r <module_name>
+/usr/bin/sudo -u apache SSH_AUTH_SOCK="$SSH_AUTH_SOCK" /usr/bin/git clone git@github.com:<path_to_module_repo>.git <module_name>
+```
+
+### Updating modules featuring custom code --- the first time
+
+The following steps can be performed ahead of the updating process, so that updating the server for those modules can be done similarly to updating untouched modules (see final step below)
+
+1. Go to the Islandora module's GitHub page and _fork_ the repository into Lib4RI
+2. On your fork's page ([`https://github.com/Lib4RI/<module_name>`](https://github.com/Lib4RI/&lt;module_name&gt;)), create a new branch (e.g. `7.x-lib4ri`), make it the default branch and, for good measure, protect the `7.x` branch (you can probably also safely deactivate "Wikis" and "Projects" for the fork)
+3. _Locally_ (i.e. on your own machine), clone the fork and enter the local repo:
+    ```
+    git clone git@github.com:/Lib4RI/<module_name>.git <module_name>.lib4ri
+    cd <module_name>.lib4ri
+    ```
+    (you will probably need to create an SSH-RSA-ID first and let [GitHub](https://github.com) know about it). `git branch` should now tell you that you are on `7.x-lib4ri`
+4. Now set up the upstream remote, have the master branch track it and check out your own branch, again:
+    ```
+    git remote add upstream git@github.com:/Islandora/<module_name>.git
+    git fetch --all
+    git checkout -b 7.x upstream/7.x
+    git checkout 7.x-lib4ri
+    ```
+5. In case you already have modified the module:
+    * If you have uncommitted changes:
+        1. Find the commit on which your changes are based (`git status`, `git log`, `git reflog` inside `/var/www/html/sites/all/modules/<module_name>` on your server should provide you with all the information you need; in case the code on your server is not a `git` repository, try guessing the commit by using the file dates on your server and confirm with `diff -ru`ing a local copy of your server's code against a `git checkout <guessed_hash>` of a local clone of the module)
+        2. Reset to this commit: `git reset --hard <hash>`
+        3. Copy the modified files into your local repository:
+            ```
+            scp -p <your_user_name>@<dora-prod-server>:/var/www/html/sites/all/modules/<module_name>/<path_to_file_1> <path_to_file_1>
+            [...]
+            scp -p <your_user_name>@<dora-prod-server>:/var/www/html/sites/all/modules/<module_name>/<path_to_file_n> <path_to_file_n>
+            ```
+            (be careful when copying recursively: the ".git" directory should _not_ be copied, whereas you might want other "dot-files")
+        4. Commit the uncommitted changes (perhaps choose an appropriate commit date if your changes are old; also, do not forget to `git config --global` your `user.name` and `user.email` if you haven't done so, yet):
+            ```
+            git status
+            git diff
+            git add <modified_files>
+            git status
+            git diff --staged
+            CDATE="<yyyy>-<mm>-<dd>T<hh>:<mm>:<ss>+<xxxx>"
+            GIT_AUTHOR_DATE="$CDATE" GIT_COMMITTER_DATE="$CDATE" git commit -F- << EOF
+            lib4ri customisations
+            
+            <description>
+            EOF
+            ```
+        5. Merge the `upstream` master branch:
+            ```
+            git merge upstream/7.x
+            ```
+            (solve conflicts and commit, if necessary)
+        6. Push the changes to your fork: `git push origin 7.x-lib4ri`
+            
+    * If your changes have already been committed on the server (<i>@unchecked</i>):
+        It is probably possible to work this out directly in a local copy of your server's module (i.e. replacing step 3):
+        1. Copy the server's module to your local machine and enter the repo:
+            ```
+            scp -pr <your_user_name>@<dora-prod-server>:/var/www/html/sites/all/modules/<module_name> <module_name>.lib4ri-prod
+            cd <module_name>.lib4ri-prod
+            ```
+        2. Rename the master branch: `git branch -m 7.x 7.x-lib4ri`
+        3. Set the remote of your branch to your Lib4RI repository:
+            ```
+            git remote set-url origin git@github.com:/Lib4RI/<module_name>.git
+            ```
+        4. Continue with step 4 above:
+            ```
+            git remote add upstream git@github.com:/Islandora/<module_name>.git
+            git fetch --all
+            git checkout -b 7.x upstream/7.x
+            git checkout 7.x-lib4ri
+            ```
+        5. Merge the `upstream` master branch:
+            ```
+            git merge upstream/7.x
+            ```
+            (solve conflicts and commit, if necessary; also, do not forget to set yourself as the author and committer before this step)
+        6. Push the changes to your fork: `git push origin 7.x-lib4ri`
+
+    Once this is set up (or if there are no modifications yet), you can make changes, commit and push them to your Lib4RI fork as you would do with your own modules. Follow the instructions below on how to get the `upstream` updates into your fork
+6. Delete the module on your server (`yes | /usr/bin/sudo /bin/rm -r /var/www/html/sites/all/modules/<module_name>`) and execute `/usr/bin/sudo -u apache /usr/bin/git clone git@github.com:/Lib4RI/<module_name>.git` inside `/var/www/html/sites/all/modules` to obtain a copy of your fork on the server
+
+### Updating modules featuring custom code --- subsequent times
+
+In the following, we assume that you are already keeping a fork of the module `<module_name>` according to the setup described in the previous subsection.
+
+1. Enter the module's location (`cd /var/www/html/sites/all/modules/<module-name>`)
+2. Check that you are on the right branch (`7.x-lib4ri`), that the remotes (`origin` and `upstream`) are set up correctly, and that there are no uncommitted changes (commit them, if necessary):
+    ```
+    git branch
+    git config -l -f .git/config
+    git reflog
+    git status
+    ```
+3. Get up-to-date with the remotes:
+    ```
+    /usr/bin/sudo -u apache /usr/bin/git fetch --all
+    ```
+4. (<i>@optional</i>) Update the upstream code in your local repository (and go back to your custom branch):
+    ```
+    /usr/bin/sudo -u apache /usr/bin/git checkout 7.x
+    /usr/bin/sudo -u apache /usr/bin/git pull upstream 7.x
+    /usr/bin/sudo -u apache /usr/bin/git checkout 7.x-lib4ri
+    ```
+5. The following command shows you all the commits that are in your (local copy of your) fork but not upstream:
+    ```
+    git log --oneline upstream/7.x..7.x-lib4ri
+    ```
+   whereas the following gives all the commits that are upstream but not yet locally available:
+    ```
+    git log --oneline 7.x-lib4ri..upstream/7.x
+    ```
+   If the output of the second command is empty, then no update is needed (but you should make sure by comparing hashes).
+
+   Note: If you do not wish to see your complete custom commit history, you can refine the first line using "`--since="<yyyy>-<mm>-<dd>T<hh>:<mm>:<ss>+<xxxx>"`", restricting, e.g., to the date of the last update, and/or you can specify "`--no-merges`" in order not to see any merge commit.
+6. In case an update is due, issue
+    ```
+    /usr/bin/sudo -u apache /usr/bin/git merge upstream/7.x
+    ```
+   (solve conflicts and commit, if necessary --- do not forget to set author and committer appropriately: `/usr/bin/sudo -u apache GIT_AUTHOR_NAME="..." GIT_AUTHOR_EMAIL="..." GIT_COMMITTER_NAME="..." GIT_COMMITTER_EMAIL="..." /usr/bin/git commit` (Note: For some reason, `git commit` may ignore the `GIT_AUTHOR_...` variables. In this case use `/usr/bin/sudo -u apache GIT_COMMITTER_NAME="..." GIT_COMMITTER_EMAIL="..." /usr/bin/git commit --author="... <...>"`))
+7. Push the changes to your fork: `/usr/bin/sudo -u apache SSH_AUTH_SOCK="$SSH_AUTH_SOCK" /usr/bin/git push origin 7.x-lib4ri`
+
+### Post-update tasks
+
+After you updated all the modules (and, where applicable, themes (`/var/www/html/sites/all/themes`) and libraries (`/var/www/html/sites/all/libraries`), too), you may want to do the following:
+1. Go to the `html` folder and update the databases (for the main site and for the subsites):
+    ```
+    cd /var/www/html
+    /usr/bin/sudo /usr/bin/drush updb
+    /usr/bin/sudo /usr/bin/drush @sites updb
+    ```
+2. Clear all caches:
+    ```
+    /usr/bin/sudo /usr/bin/drush @sites cc all
+    ```
+3. Re-start the `fedora` and `httpd` services:
+    ```
+    /usr/bin/sudo /sbin/service fedora start
+    /usr/bin/sudo /sbin/service httpd start
+    ```
+4. (<i>@optional</i>) On each subsite, verify [`<subsite-base-url>/update.php`](http://<dev_subsite-base-url>/update.php)
+5. Test, test again, and, when you are done, go ahead and test some more. Try to perform all your routine jobs, as well as special cases. Go through the configuration pages to see what has changed. Also, you might want to see if the bugs in your bug list are still present. Finally, do some testing for good measure...
 
 <br/>
 
